@@ -132,6 +132,7 @@ struct fthd_private {
 	struct v4l2_ctrl *ctrl_exposure_auto;
 	struct v4l2_ctrl *ctrl_exposure;
 	struct v4l2_ctrl *ctrl_gain;
+	struct v4l2_ctrl *ctrl_exposure_bias;
 	bool ae_suspended;
 	unsigned long ae_last_set; /* jiffies */
 	unsigned int sequence;

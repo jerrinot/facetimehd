@@ -767,6 +767,12 @@ static const u16 fthd_exposure_bias_fw[] = {
 	32, 45, 64, 91, 128, 181, 256, 362, 512, 724, 1024, 1448, 2048,
 };
 
+static int fthd_set_exposure_bias(struct fthd_private *dev_priv)
+{
+	return fthd_isp_cmd_channel_ae_bias_exposure_set(dev_priv, 0,
+			fthd_exposure_bias_fw[dev_priv->ctrl_exposure_bias->val]);
+}
+
 static int fthd_set_exposure(struct fthd_private *dev_priv)
 {
 	u32 period_us = 256000000U / READ_ONCE(dev_priv->frame_rate);
@@ -775,16 +781,17 @@ static int fthd_set_exposure(struct fthd_private *dev_priv)
 	int ret;
 
 	/* fthd_start_streaming() reruns this through v4l2_ctrl_handler_setup(). */
-	if (!vb2_is_streaming(&dev_priv->vb2_queue))
+	if (!vb2_start_streaming_called(&dev_priv->vb2_queue))
 		return 0;
 
 	if (dev_priv->ctrl_exposure_auto->val != V4L2_EXPOSURE_MANUAL) {
 		if (!dev_priv->ae_suspended)
 			return 0;
 		ret = fthd_isp_cmd_channel_ae_update(dev_priv, 0, false);
-		if (!ret)
-			dev_priv->ae_suspended = false;
-		return ret;
+		if (ret)
+			return ret;
+		dev_priv->ae_suspended = false;
+		return fthd_set_exposure_bias(dev_priv);
 	}
 
 	/* The firmware rejects manual exposure while AE updates are running. */
@@ -843,8 +850,10 @@ static int fthd_s_ctrl(struct v4l2_ctrl *ctrl)
 		ret = fthd_set_exposure(dev_priv);
 		break;
 	case V4L2_CID_AUTO_EXPOSURE_BIAS:
-		ret = fthd_isp_cmd_channel_ae_bias_exposure_set(dev_priv, 0,
-								fthd_exposure_bias_fw[ctrl->val]);
+		/* Setting the bias restarts the firmware AE, so defer it until auto mode. */
+		ret = 0;
+		if (dev_priv->ctrl_exposure_auto->cur.val != V4L2_EXPOSURE_MANUAL)
+			ret = fthd_set_exposure_bias(dev_priv);
 		break;
 	case V4L2_CID_EXPOSURE_AUTO_PRIORITY:
 		ret = fthd_isp_cmd_channel_frame_rate_min(dev_priv, 0,
@@ -932,7 +941,8 @@ int fthd_v4l2_register(struct fthd_private *dev_priv)
 	dev_priv->ctrl_gain =
 		v4l2_ctrl_new_std(&dev_priv->v4l2_ctrl_handler, &fthd_ctrl_ops,
 				  V4L2_CID_GAIN, 256, 4096, 1, 256);
-	v4l2_ctrl_new_int_menu(&dev_priv->v4l2_ctrl_handler, &fthd_ctrl_ops,
+	dev_priv->ctrl_exposure_bias =
+		v4l2_ctrl_new_int_menu(&dev_priv->v4l2_ctrl_handler, &fthd_ctrl_ops,
 			       V4L2_CID_AUTO_EXPOSURE_BIAS,
 			       ARRAY_SIZE(fthd_exposure_bias_qmenu) - 1, 6,
 			       fthd_exposure_bias_qmenu);
