@@ -601,7 +601,7 @@ struct isp_cmd_channel_streaming_mode {
 
 struct isp_cmd_channel_frame_rate_set {
 	u32 channel;
-	u32 rate;
+	u16 rate;
 };
 
 struct isp_cmd_channel_ae_bias_exposure_set {
